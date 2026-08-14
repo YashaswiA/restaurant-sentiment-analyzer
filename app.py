@@ -2,11 +2,13 @@ import streamlit as st
 import pickle
 import pandas as pd
 import re
+import os
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 import ssl
 
+# SSL fix for NLTK downloads on some cloud servers
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -14,30 +16,41 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
-nltk.download('stopwords')
+# Download stopwords quietly
+nltk.download('stopwords', quiet=True)
 
 st.set_page_config(page_title="Restaurant Sentiment Analyzer", page_icon="🍽️", layout="centered")
+
+# Get the absolute directory path where this script lives
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Load models
 @st.cache_resource
 def load_models():
-    with open('model.pkl', 'rb') as f:
+    model_path = os.path.join(BASE_DIR, 'model.pkl')
+    cv_path = os.path.join(BASE_DIR, 'cv.pkl')
+    
+    with open(model_path, 'rb') as f:
         model = pickle.load(f)
-    with open('cv.pkl', 'rb') as f:
+    with open(cv_path, 'rb') as f:
         cv = pickle.load(f)
     return model, cv
 
 model, cv = load_models()
 
+# --- PERFORMANCE FIX ---
+# Initialize stemmer and stopwords ONCE globally instead of inside the function.
+# This makes the CSV Batch Analysis drastically faster.
+ps = PorterStemmer()
+all_stopwords = set(stopwords.words('english'))
+if 'not' in all_stopwords:
+    all_stopwords.remove('not')
+
 def predict_sentiment(review):
-    ps = PorterStemmer()
-    all_stopwords = stopwords.words('english')
-    if 'not' in all_stopwords:
-        all_stopwords.remove('not')
     review = re.sub('[^a-zA-Z]', ' ', review)
     review = review.lower()
     review = review.split()
-    review = [ps.stem(word) for word in review if not word in set(all_stopwords)]
+    review = [ps.stem(word) for word in review if word not in all_stopwords]
     review = ' '.join(review)
     X = cv.transform([review]).toarray()
     prediction = model.predict(X)
@@ -69,7 +82,6 @@ with tab2:
     
     if uploaded_file is not None:
         try:
-            # Try parsing as CSV, if fails try TSV or vice versa based on extension
             if uploaded_file.name.endswith('.tsv'):
                 df = pd.read_csv(uploaded_file, delimiter='\t', quoting=3)
             else:
@@ -107,3 +119,4 @@ with tab2:
                 )
         except Exception as e:
             st.error(f"Error processing file: {e}")
+            \
