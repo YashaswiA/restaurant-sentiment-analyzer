@@ -1,7 +1,6 @@
-python == 3.11.9
+streamlit>=1.32.0
 scikit-learn
 pandas
 numpy
 nltk
-streamlit>=1.32.0
 joblib
